@@ -1,0 +1,125 @@
+:root {
+  color-scheme: light;
+  --bg: #f2f0ea; --fg: #1d1d1b; --muted: #8a8882; --ink: #1d1d1b;
+  --g: #d4658f; --d: #8a8882; --y: #dcaa28; --r: #b4532a; --s: #8cc062; --b: #7fa6c9;
+  --trail: #cfccc3;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1a1a19; --fg: #ecebe6; --muted: #7d7c77; --ink: #1a1a19;
+  --g: #e58fb7; --d: #5b5a56; --y: #d8b23c; --r: #b85a2e; --s: #8fb56a; --b: #7d97ad;
+  --trail: #3a3936;
+}
+
+* { margin: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); overflow: hidden; cursor: crosshair; touch-action: none;
+  font: 14px/1.7 "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+#world { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+nav {
+  position: fixed; top: 20px; left: 0; right: 0; z-index: 1;
+  display: flex; justify-content: center; align-items: center; gap: 36px;
+}
+nav a { color: var(--muted); text-decoration: none; }
+nav a:hover, nav a[aria-current] { color: var(--fg); }
+nav button { background: none; border: 0; padding: 4px; color: var(--muted); cursor: pointer; display: grid; }
+nav button:hover { color: var(--fg); }
+nav button[aria-pressed="true"] { color: #d99a1c; }
+nav button[aria-pressed="true"] svg { fill: currentColor; fill-opacity: .25; }
+
+/* switching theme: the new colors spread outward from the bulb */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(root) { z-index: 0; }
+::view-transition-new(root) { z-index: 1; }
+
+#hud {
+  position: fixed; top: 20px; right: max(16px, 4vw); z-index: 1;
+  font-family: inherit; font-size: 10.5px; line-height: 1.5; color: var(--muted); pointer-events: none;
+}
+
+main {
+  position: fixed; left: max(16px, 18vw); bottom: 22vh; z-index: 1;
+}
+main::before, #hud::before {
+  content: ''; position: absolute; inset: -40px -80px; z-index: -1;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  -webkit-mask-image: radial-gradient(closest-side, #000 65%, transparent);
+  mask-image: radial-gradient(closest-side, #000 65%, transparent);
+}
+nav, #hud, main { text-shadow: 0 0 8px var(--bg), 0 0 8px var(--bg), 0 0 3px var(--bg); }
+.mission { margin-top: 6px; color: var(--muted); }
+.cursor { animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+@media (max-width: 640px) { nav { gap: 20px; font-size: 13px; } #hud { display: none; } }
+@media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
+
+/* research demos, as a post: a scrolling column over a quiet world */
+body.post { overflow-x: hidden; overflow-y: auto; touch-action: auto; cursor: auto; }
+body.post #world { opacity: .3; }
+main.post { position: relative; left: auto; bottom: auto; width: min(620px, calc(100vw - 32px)); margin: 90px auto; }
+main.post::before { inset: -30px -60px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 60px, #000 calc(100% - 60px), transparent); mask-image: linear-gradient(90deg, transparent, #000 60px, #000 calc(100% - 60px), transparent); background: color-mix(in srgb, var(--bg) 80%, transparent); }
+main.post > * + * { margin-top: 16px; }
+main.post h2 { font-size: 15px; font-weight: 600; margin-top: 40px; }
+main.post h1 { font-size: 22px; line-height: 1.3; font-weight: 600; margin-top: 4px; }
+.meta, .caption { font-size: 12px; line-height: 1.6; color: var(--muted); }
+main.post a { color: var(--fg); text-underline-offset: 3px; }
+.row { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+main.post button { font: inherit; background: none; border: 0; padding: 0; color: var(--fg); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+main.post button[hidden] { display: none; }
+main.post button[aria-pressed="true"] { color: var(--y); }
+#games button, #pad button { text-decoration: none; color: var(--muted); }
+#games button:hover, #games button[aria-current], #pad button:hover { color: var(--fg); }
+#games button[aria-current]::before { content: '> '; color: var(--y); }
+#stage { height: 44vh; display: flex; align-items: flex-end; }
+#stage canvas { display: block; image-rendering: pixelated; background: #000; max-height: 100%; touch-action: none;
+  box-shadow: 0 0 0 1px var(--trail), 0 0 0 7px var(--bg), 0 0 0 8px var(--trail); }
+.caption { white-space: pre-wrap; margin-top: 12px; min-height: 3em; }
+@media (max-width: 640px) { main.post { margin-top: 70px; } main.post::before { inset: -30px -16px; } }
+
+/* the list of posts */
+.posts { list-style: none; padding: 0; margin-top: 32px; }
+.posts li + li { margin-top: 28px; }
+.posts a { display: flex; gap: 20px; align-items: flex-start; text-decoration: none; color: var(--fg); }
+.posts img { flex: none; image-rendering: pixelated; box-shadow: 0 0 0 1px var(--trail), 0 0 0 5px var(--bg), 0 0 0 6px var(--trail); margin: 6px; }
+.posts strong { display: block; font-weight: 600; margin-top: 2px; }
+.posts a:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+.posts .summary { display: block; margin-top: 6px; color: var(--muted); }
+@media (max-width: 640px) { .posts a { flex-direction: column; } }
+
+/* the write-up under the demo */
+main.post h3 { font-size: 14px; font-weight: 600; margin-top: 28px; }
+.writeup > * + * { margin-top: 16px; }
+.writeup img { display: block; max-width: 100%; height: auto; image-rendering: pixelated; margin: 0 auto; }
+.writeup ul, .writeup ol { padding-left: 20px; }
+.writeup li + li { margin-top: 6px; }
+.writeup code { overflow-wrap: anywhere; font-family: inherit; font-size: 12.5px; color: var(--muted); }
+.writeup .table { overflow-x: auto; }
+.writeup table { border-collapse: collapse; font-size: 12px; line-height: 1.5; min-width: 100%; }
+.writeup th, .writeup td { text-align: left; vertical-align: top; padding: 5px 14px 5px 0; border-bottom: 1px solid var(--trail); }
+.writeup th { font-weight: 600; color: var(--muted); }
+.writeup .gallery { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.writeup .gallery img { width: calc(25% - 9px); margin: 0; }
+.video video { display: block; width: auto; max-width: 100%; max-height: 80vh; aspect-ratio: 9 / 16; background: #000;
+  box-shadow: 0 0 0 1px var(--trail), 0 0 0 7px var(--bg), 0 0 0 8px var(--trail); margin: 8px; }
+nav.toc { position: static; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 40px; font-size: 13px; }
+nav.toc a { color: var(--muted); text-decoration: none; }
+nav.toc a:hover { color: var(--fg); }
+nav.toc a::before { content: '# '; color: var(--y); }
+[id] { scroll-margin-top: 64px; }
+@media (max-width: 640px) { .writeup .gallery img { width: calc(50% - 6px); } }
+/* on a scrolling page the nav needs its own ground */
+body.post > nav { z-index: 2; top: 0; padding: 20px 0 16px; background: linear-gradient(var(--bg) 75%, transparent); }
+/* centred: the column on the page, and inside it the demo, the media and the headings */
+main.post h1, main.post h2, main.post > .meta, .caption, .row { text-align: center; justify-content: center; }
+main.post > p:not(.meta):not(.caption) { text-align: left; }
+#stage { justify-content: center; }
+.video video, .writeup img { margin-left: auto; margin-right: auto; }
+.writeup .gallery { justify-content: center; }
+.posts a { justify-content: center; }

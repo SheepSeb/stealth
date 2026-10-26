@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Games with no game code · Verdin Systems</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23d8b23c'/></svg>">
+  <script>try { if (localStorage.getItem('theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch {}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="post">
+  <canvas id="world" aria-hidden="true"></canvas>
+  <nav>
+    <a href="index.html">stealth</a>
+    <a href="demos.html" aria-current="page">research demos</a>
+    <button id="lamp" aria-label="Toggle light" aria-pressed="true">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+    </button>
+  </nav>
+  <main class="post">
+    <p class="meta"><a href="demos.html">← research demos</a> · october 2026</p>
+    <h1>Games with no game code<span class="cursor">_</span></h1>
+    <p>Every frame below is dreamed by a small int8 transformer: it takes the current frame and a button press and predicts the next frame and the reward. A second, tinier network looks at each dreamed frame and picks the button. Both fit on a Raspberry Pi Pico 2 W, and here they run in your browser as WebAssembly.</p>
+    <div class="row" id="games" role="tablist" aria-label="game"></div>
+    <div id="stage"><canvas id="screen" aria-label="dreamed game"></canvas></div>
+    <p class="caption" id="stats">loading…</p>
+    <div class="row" id="pad"></div>
+    <p>Press a key (or the arrows, or the buttons above) to take over from the agent and play the dream yourself. <button id="agent" hidden>hand it back</button></p>
+    <p>The agent is pretrained, but it can also <button id="learn" aria-pressed="false">learn on the fly</button>: a fresh stream-x agent that starts from scratch and improves while it plays inside the dream.</p>
+    <p class="meta" id="help"></p>
+    <h2 id="on-the-board">On the board</h2>
+    <p>The same two networks on a Raspberry Pi Pico 2 W with a Display Pack: no game code on the chip, only the dream and the actor taking turns on one core.</p>
+    <figure class="video">
+      <video src="media/tinyworldformer.mp4" poster="media/tinyworldformer.jpg" autoplay muted loop playsinline preload="auto"></video>
+    </figure>
+    <nav class="toc" aria-label="contents">
+      <a href="#the-dream-and-the-actor">the dream and the actor</a>
+      <a href="#the-games">the games</a>
+      <a href="#how-the-world-model-works">how the world model works</a>
+      <a href="#the-agents-stream-x">the agents: stream-x</a>
+      <a href="#quantization-and-the-pico">quantization and the Pico</a>
+      <a href="#on-the-chip">on the chip</a>
+    </nav>
+    <article class="writeup">
+      <h2 id="the-dream-and-the-actor">The dream and the actor</h2>
+      <p><img src="media/explain_twonetworks.gif" alt="the dream and the actor" loading="lazy" /></p>
+      <div class="table"><table>
+      <thead>
+      <tr>
+      <th></th>
+      <th>network 1: the dream</th>
+      <th>network 2: the actor</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td>job</td>
+      <td>frame + button → next frame + reward</td>
+      <td>frame → button</td>
+      </tr>
+      <tr>
+      <td>architecture</td>
+      <td>looped transformer, int8</td>
+      <td>MLP with two hidden layers, float32</td>
+      </tr>
+      <tr>
+      <td>size</td>
+      <td>26k–131k parameters</td>
+      <td>9k–16k parameters</td>
+      </tr>
+      <tr>
+      <td>cost per frame</td>
+      <td>2–4M multiply-adds</td>
+      <td>9k–16k multiply-adds</td>
+      </tr>
+      <tr>
+      <td>trained</td>
+      <td>on recorded real games (<a href="#how-the-world-model-works">how</a>)</td>
+      <td>with stream-x, in the real game or inside the dream (<a href="#the-agents-stream-x">how</a>)</td>
+      </tr>
+      </tbody>
+      </table></div>
+      <ul>
+      <li><strong>A closed loop.</strong> On the chip neither network sees the real game. The actor only sees frames the dream drew, and the dream only sees buttons the actor pressed.</li>
+      <li><strong>One core.</strong> Both run on core 1 of the RP2350, one after the other, every frame. Core 0 handles USB and the display.</li>
+      <li><strong>Learning on the chip.</strong> A third network can replace the pretrained actor: a fresh stream-x agent that learns from scratch while it plays inside the dream, on the board.</li>
+      <li><strong>Your turn.</strong> Any button press hands control from the actor to you, so you play the dream yourself.</li>
+      </ul>
+      <h2 id="the-games">The games</h2>
+      <p>Each game is a few hundred lines of numpy (<code>src/tinyworldformer/games/</code>). It renders to a small grid of token ids, and one frame always holds the whole game state. Hidden state is drawn into the frame: the ball's heading is part of its token, and Doom-lite has a minimap.</p>
+      <div class="table"><table>
+      <thead>
+      <tr>
+      <th>game</th>
+      <th>frame</th>
+      <th>rules</th>
+      <th>random event</th>
+      <th>world model</th>
+      <th>exact frames, 2 loops</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td>Breakout</td>
+      <td>20×16</td>
+      <td>paddle, ball, 56 bricks, 5 lives</td>
+      <td>the serve after a miss</td>
+      <td>26k params, 4.3M MACs</td>
+      <td>99.99%</td>
+      </tr>
+      <tr>
+      <td>Doom-lite</td>
+      <td>32×32</td>
+      <td>raycast first-person view of an 8×8 maze; an enemy walks shortest paths to you; you shoot</td>
+      <td>the enemy's respawn</td>
+      <td>55k params, 4.2M MACs</td>
+      <td>83.6% (see below)</td>
+      </tr>
+      <tr>
+      <td>Flappy Bird</td>
+      <td>24×24</td>
+      <td>gravity, flaps, scrolling pipes</td>
+      <td>the next gap height</td>
+      <td>46k params, 2.0M MACs</td>
+      <td>100%</td>
+      </tr>
+      <tr>
+      <td>Pong</td>
+      <td>20×32</td>
+      <td>you against a CPU paddle that reacts late, first to 5</td>
+      <td>the serve after a point</td>
+      <td>46k params, 2.3M MACs</td>
+      <td>99.45%</td>
+      </tr>
+      <tr>
+      <td>Pac-Man lite</td>
+      <td>48×48</td>
+      <td>23×21 maze, 249 pellets, two ghosts on shortest paths, 3 lives</td>
+      <td>the ghosts' respawn</td>
+      <td>–</td>
+      <td>–</td>
+      </tr>
+      </tbody>
+      </table></div>
+      <p>"Exact frames" counts held-out transitions where every cell of the predicted frame matches the real game, leaving out frames after a random event. A random event can only be sampled, not predicted. Doom-lite's 3D view has 768 cells, so one shaded wall pixel off counts the whole frame as wrong. Its game state is almost always right; see <a href="#checking-the-dream">checking the dream</a>.</p>
+      <div class="gallery">
+      <img src="media/dream_breakout.gif" alt="" loading="lazy" />
+      <img src="media/dream_doomlite.gif" alt="" loading="lazy" />
+      <img src="media/dream_flappy.gif" alt="" loading="lazy" />
+      <img src="media/dream_pong.gif" alt="" loading="lazy" />
+      </div>
+      <h2 id="how-the-world-model-works">How the world model works</h2>
+      <h3 id="frames-become-tokens">Frames become tokens</h3>
+      <p><img src="media/explain_patches.gif" alt="patches" loading="lazy" /></p>
+      <ul>
+      <li>The frame is cut into square patches: 2×2 cells in Breakout, 4×4 in Doom-lite, Flappy and Pong, 6×6 in Pac-Man. Each game ends up with 36 to 80 tokens.</li>
+      <li>A patch's token is the sum of one learned vector per cell. Each position inside the patch has its own table, so the order of the cells is kept.</li>
+      <li>Every token also gets a position vector and the action's vector.</li>
+      </ul>
+      <h3 id="one-block-looped">One block, looped</h3>
+      <p><img src="media/explain_loop.gif" alt="loop" loading="lazy" /></p>
+      <ul>
+      <li><strong>One block:</strong> a single transformer block (attention plus a ReLU MLP) with one set of weights, applied 1 to 4 times. The input is added back before every pass.</li>
+      <li><strong>Every pass is trained:</strong> the output after each pass is trained against the next frame, so at run time the loop count trades speed for accuracy.</li>
+      <li><strong>On the Pico:</strong> two loops.</li>
+      </ul>
+      <p>The animation shows one held-out Doom-lite step. After one pass the model draws an enemy that is not there; each further pass removes part of it: 92, 35, 12, then 0 wrong cells. The bars on its right are the share of held-out frames each loop count gets exactly right.</p>
+      <p>Below, one dreamed Doom-lite step decoded after 1, 2, 3 and 4 loops. Red boxes are cells that differ from the real rules.</p>
+      <p><img src="media/loops_doomlite.gif" alt="loops" loading="lazy" /></p>
+      <p>Exact held-out frames by loop count:</p>
+      <div class="table"><table>
+      <thead>
+      <tr>
+      <th>loops</th>
+      <th>Breakout</th>
+      <th>Doom-lite</th>
+      <th>Flappy Bird</th>
+      <th>Pong</th>
+      <th>Pac-Man</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td>1</td>
+      <td>99.68%</td>
+      <td>59.8%</td>
+      <td>99.99%</td>
+      <td>98.47%</td>
+      <td>–</td>
+      </tr>
+      <tr>
+      <td>2</td>
+      <td>99.99%</td>
+      <td>83.6%</td>
+      <td>100%</td>
+      <td>99.45%</td>
+      <td>–</td>
+      </tr>
+      <tr>
+      <td>3</td>
+      <td>100%</td>
+      <td>85.9%</td>
+      <td>100%</td>
+      <td>99.60%</td>
+      <td>–</td>
+      </tr>
+      <tr>
+      <td>4</td>
+      <td>99.96%</td>
+      <td>84.7%</td>
+      <td>100%</td>
+      <td>99.53%</td>
+      <td>–</td>
+      </tr>
+      </tbody>
+      </table></div>
+      <h3 id="decoding">Decoding</h3>
+      <p><img src="media/explain_decode.gif" alt="decode" loading="lazy" /></p>
+      <p>The model outputs a score for every cell and every token. Turning the scores into a frame takes three rules, shown above on Pong:</p>
+      <ol>
+      <li><strong>Background</strong> (walls, bricks, pellets, floor): each cell takes its most likely token on its own.</li>
+      <li><strong>Singletons</strong> (the ball, the player, each ghost): one choice over all (cell, token) pairs, so there is always exactly one. For a random event the choice is sampled among candidates within 2.2 logits of the best, so the dream invents a new serve or respawn instead of averaging all of them.</li>
+      <li><strong>Stamps:</strong> Pac-Man and the ghosts are 2×2 sprites. Only one cell of each carries state (the mouth holds the heading; the ghost's lower-left cell holds whether a pellet is underneath). The other three cells are drawn from it instead of being predicted. This took Pac-Man from 14% to 65% exact frames with no retraining.</li>
+      </ol>
+      <p>Rule 2 replaced per-cell decoding early on. Decoded cell by cell, the first Breakout model drew two balls at once; one global choice took exact frames from 91.6% to 99.7%.</p>
+      <h3 id="checking-the-dream">Checking the dream</h3>
+      <p>Frame accuracy on recorded data is not enough. An agent drives the dream into states the data never had, and any mistake there is something it can exploit. So the check runs while an agent plays:</p>
+      <ol>
+      <li>Read the game state back off the dreamed frame (<code>games/&lt;game&gt;.py: read</code>).</li>
+      <li>Apply the real rules to that state and the agent's action.</li>
+      <li>Compare the result with the next dreamed frame, cell by cell, and compare the rewards.</li>
+      </ol>
+      <p><img src="media/check_doomlite.gif" alt="check" loading="lazy" /></p>
+      <p>5,000 dreamed steps per game, at 2 loops, with the shipped agent (<code>training/evalwm.py --agent</code>):</p>
+      <div class="table"><table>
+      <thead>
+      <tr>
+      <th>game</th>
+      <th>wrong game states</th>
+      <th>wrong rewards</th>
+      <th>wrong cells per step</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td>Breakout</td>
+      <td>not read back; 0 frames with impossible tokens</td>
+      <td>6 (paid without a brick breaking)</td>
+      <td>–</td>
+      </tr>
+      <tr>
+      <td>Doom-lite</td>
+      <td>1</td>
+      <td>0</td>
+      <td>1.50</td>
+      </tr>
+      <tr>
+      <td>Flappy Bird</td>
+      <td>0</td>
+      <td>0</td>
+      <td>0.00</td>
+      </tr>
+      <tr>
+      <td>Pong</td>
+      <td>1</td>
+      <td>0</td>
+      <td>0.00</td>
+      </tr>
+      </tbody>
+      </table></div>
+      <h3 id="training">Training</h3>
+      <p><strong>1. Recording.</strong> Agents play the real game, and every step becomes one example: frame, action, next frame, reward. That gives 1–3 million examples per game. Some episodes start from unusual states (bricks with holes, random positions) so the data covers more of the game.</p>
+      <p><img src="media/explain_data.gif" alt="data" loading="lazy" /></p>
+      <p><strong>2. Training.</strong> The world model learns to predict the next frame: a cross-entropy loss per cell, 30k steps, about 45 minutes per game on an RTX 4060 Ti. The first 3–4k steps run in float, then int8 rounding switches on (QAT, see <a href="#quantization-and-the-pico">quantization</a>). The animation shows one held-out Pong step predicted at six points of a short training run.</p>
+      <p><img src="media/explain_training.gif" alt="training" loading="lazy" /></p>
+      <p><strong>3. Deployment.</strong> The int8 weights are written into Rust source with every float stored as its exact bits. <code>cargo test</code> checks that the Rust engine reproduces the Python integer spec bit for bit, then the firmware runs the dream on the Pico.</p>
+      <p><img src="media/explain_deploy.gif" alt="deploy" loading="lazy" /></p>
+      <p><strong>4. Closing the loop.</strong> An agent trained in the dream reaches states the recorded data never had. Recording real data with that agent and fine-tuning the world model on everything fixes the dream there.</p>
+      <p>Each fix below cost a training round to find:</p>
+      <ul>
+      <li><strong>Hedging.</strong> Weighting the loss by "this cell changed" biased the model toward predicting change, so it drew two balls and broke two bricks. The fix was to weight by where things can happen in the <em>input</em> frame, plus the global choice for singletons.</li>
+      <li><strong>Coverage.</strong> A Breakout agent in the dream got 154 points with 26 bricks left: the dream paid for corner hits without removing the brick. Doom-lite agents snipe from 5 cells away, which scripted play never did. The fix was collecting data with the learned agent.</li>
+      <li><strong>Exploits.</strong> Agents trained only in the dream scored 210 there (the real maximum is 56) and 28 in the real game, as <em>World Models</em> (Ha &amp; Schmidhuber) predicts. Each collect-and-fine-tune round closed the exploit that agent had found; Breakout needed four rounds.</li>
+      <li><strong>Copying.</strong> The Doom-lite dream sometimes lost the enemy sprite and never drew it again: the model copied the previous view instead of redrawing it from the minimap. Noise augmentation fixed it (<code>train --noise 0.3</code>, as in GameNGen): input views get random pixels and sometimes lose the sprite.</li>
+      <li><strong>Capacity.</strong> <code>d=32</code> could not absorb the wider data for Breakout; <code>d=48</code> could. Pac-Man's 48×48 frame needed <code>d=64</code>.</li>
+      </ul>
+      <h2 id="the-agents-stream-x">The agents: stream-x</h2>
+      <p><img src="media/explain_streamx.gif" alt="stream-x" loading="lazy" /></p>
+      <p>Stream AC(λ) (Elsayed, Vasan &amp; Mahmood, 2024) learns from one transition at a time:</p>
+      <ul>
+      <li><strong>No buffer:</strong> no replay buffer, no batches, no target network.</li>
+      <li><strong>Updates:</strong> eligibility traces carry credit back in time, and ObGD shrinks any step that would overshoot the TD target.</li>
+      <li><strong>Networks:</strong> a policy and a value network, each two hidden layers of 64 units (32 on the Pico) with LayerNorm.</li>
+      </ul>
+      <p>The input is a feature vector read off the frame (<code>training/streamx.py: observe_*</code>, mirrored in Rust in <code>tinyworldformer-rs/src/agent.rs</code>). Examples: the ball's row, column and heading in Breakout; in Pac-Man, for each direction, the shortest-path distance to the nearest pellet and how close each ghost is.</p>
+      <p>Below, one training run per game (real game, 500k steps) at six stages: untrained, the end, and the snapshots where the score has covered 25, 50, 75 and 95% of the way. Each panel plays greedily from the same start and skips a few steps per frame. "try" counts the episodes played so far, so crashes show.</p>
+      <p><strong>Breakout</strong>
+      <img src="media/progress_breakout.gif" alt="" loading="lazy" /></p>
+      <p><strong>Doom-lite</strong>
+      <img src="media/progress_doomlite.gif" alt="" loading="lazy" /></p>
+      <p><strong>Flappy Bird</strong>
+      <img src="media/progress_flappy.gif" alt="" loading="lazy" /></p>
+      <p><strong>Pac-Man lite</strong>
+      <img src="media/progress_pacman.gif" alt="" loading="lazy" /></p>
+      <p><strong>Pong</strong>
+      <img src="media/progress_pong.gif" alt="" loading="lazy" /></p>
+      <p>Greedy return, real game, mean of 10 episodes (snapshots of the same run):</p>
+      <div class="table"><table>
+      <thead>
+      <tr>
+      <th>game</th>
+      <th>0</th>
+      <th>1k</th>
+      <th>2k</th>
+      <th>5k</th>
+      <th>10k</th>
+      <th>20k</th>
+      <th>50k</th>
+      <th>100k</th>
+      <th>150k</th>
+      <th>250k</th>
+      <th>500k</th>
+      <th>max</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td>Breakout</td>
+      <td>8.2</td>
+      <td>17.0</td>
+      <td>15.9</td>
+      <td>21.9</td>
+      <td>29.9</td>
+      <td>29.9</td>
+      <td>29.9</td>
+      <td>31.1</td>
+      <td>35.0</td>
+      <td>39.9</td>
+      <td>45.6</td>
+      <td>56</td>
+      </tr>
+      <tr>
+      <td>Doom-lite</td>
+      <td>−5.0</td>
+      <td>−5.0</td>
+      <td>−5.0</td>
+      <td>−5.0</td>
+      <td>−5.0</td>
+      <td>59.5</td>
+      <td>69.9</td>
+      <td>78.1</td>
+      <td>81.8</td>
+      <td>82.1</td>
+      <td>82.9</td>
+      <td>–</td>
+      </tr>
+      <tr>
+      <td>Flappy Bird</td>
+      <td>−1.0</td>
+      <td>−1.0</td>
+      <td>−1.0</td>
+      <td>1.9</td>
+      <td>24.6</td>
+      <td>24.9</td>
+      <td>96.2</td>
+      <td>123.7</td>
+      <td>309.2</td>
+      <td>332</td>
+      <td>332</td>
+      <td>332</td>
+      </tr>
+      <tr>
+      <td>Pac-Man</td>
+      <td>7.0</td>
+      <td>3.8</td>
+      <td>17.0</td>
+      <td>17.7</td>
+      <td>8.2</td>
+      <td>46.8</td>
+      <td>72.9</td>
+      <td>138.9</td>
+      <td>146.6</td>
+      <td>190.3</td>
+      <td>217.4</td>
+      <td>249</td>
+      </tr>
+      <tr>
+      <td>Pong</td>
+      <td>−4.3</td>
+      <td>−3.9</td>
+      <td>−3.9</td>
+      <td>−3.9</td>
+      <td>−1.7</td>
+      <td>−2.0</td>
+      <td>−0.3</td>
+      <td>1.1</td>
+      <td>1.7</td>
+      <td>1.1</td>
+      <td>1.1</td>
+      <td>5</td>
+      </tr>
+      </tbody>
+      </table></div>
+      <p>Breakout: bricks minus lost balls. Doom-lite: kills minus hits in 500 steps. Flappy Bird: pipes in 3,000 steps. Pac-Man: pellets minus lives lost. Pong: points won minus lost in 3,000 steps.</p>
+      <ul>
+      <li><strong>Flappy Bird</strong> reaches the maximum by 250k steps.</li>
+      <li><strong>Breakout</strong> is still improving at 500k; the 1M-step agents clear the board (56.0).</li>
+      <li><strong>Pong</strong>'s agent learns not to miss, then plateaus: beating the CPU needs angled shots off the paddle's ends, which it rarely finds.</li>
+      </ul>
+      <p><strong>Trained only in the dream.</strong> These agents never saw the real game. Scores are measured in the real game (greedy, 50 episodes):</p>
+      <div class="table"><table>
+      <thead>
+      <tr>
+      <th>game</th>
+      <th>agent</th>
+      <th>real-game score</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td>Breakout</td>
+      <td>1M dream steps, −5 per lost ball</td>
+      <td>54.4 of 56 bricks</td>
+      </tr>
+      <tr>
+      <td>Doom-lite</td>
+      <td>300k dream steps, idle penalty 0.1</td>
+      <td>81.6 kills per 500 steps</td>
+      </tr>
+      </tbody>
+      </table></div>
+      <p>Without shaping, Doom-lite agents camp in the start corner and fire: the enemy always comes to them. <code>--idle-penalty 0.1</code> costs 0.1 for each step spent in a cell visited more than 6 times in the last 20 steps. The position is read off the minimap, so the penalty works inside the dream too. With it the agent patrols and gets twice the kills.</p>
+      <p><strong>Learning on the Pico.</strong> <code>tinyworldformer-rs/src/learner.rs</code> is the same algorithm in <code>no_std</code> Rust, with backpropagation written by hand. It matches 200 PyTorch updates to within 3.5e-6. On the host, a fresh agent inside the Rust int8 Flappy dream averages 6 pipes per episode after 25k steps, 121 after 100k, and 300+ after 250k.</p>
+      <h2 id="quantization-and-the-pico">Quantization and the Pico</h2>
+      <p><img src="media/explain_quantize.gif" alt="quantization" loading="lazy" /></p>
+      <ul>
+      <li><strong>Weights:</strong> every matrix in the world model is int8, with one scale per output row (<code>scale = max|w| / 127</code>).</li>
+      <li><strong>Activations:</strong> int8, with one scale per tensor and per loop index (the loops see different ranges).</li>
+      <li><strong>Matmuls:</strong> int8 × int8 sums into int32 (two multiply-adds per <code>SMLAD</code> instruction on the RP2350), then one float multiply by the two scales.</li>
+      <li><strong>Softmax:</strong> a 1024-entry exp table, with probabilities stored as uint8.</li>
+      <li><strong>Float32:</strong> norms, residuals and embeddings. The RP2350 has an FPU.</li>
+      <li><strong>QAT:</strong> training applies the same rounding (straight-through estimator), so the int8 model is the model that was trained.</li>
+      <li><strong>Bit-exact:</strong> <code>rustexport/intref.py</code> is the int8 model in numpy with every float operation in a fixed order. The Rust engine reproduces it bit for bit, and <code>cargo test</code> checks golden vectors for every exported env.</li>
+      </ul>
+      <p><img src="media/sizes.png" alt="sizes" loading="lazy" /></p>
+      <div class="table"><table>
+      <thead>
+      <tr>
+      <th>game</th>
+      <th>int8 weights</th>
+      <th>float32 (embeddings, norms, scales)</th>
+      <th>game data</th>
+      <th>agent (float32)</th>
+      <th>firmware flash</th>
+      <th>firmware RAM</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td>Breakout</td>
+      <td>19.7 KB</td>
+      <td>31.6 KB</td>
+      <td>1.1 KB</td>
+      <td>54.1 KB</td>
+      <td>361 KB</td>
+      <td>299 KB</td>
+      </tr>
+      <tr>
+      <td>Doom-lite</td>
+      <td>33.9 KB</td>
+      <td>91.9 KB</td>
+      <td>12.0 KB</td>
+      <td>61.3 KB</td>
+      <td>471 KB</td>
+      <td>357 KB</td>
+      </tr>
+      <tr>
+      <td>Flappy Bird</td>
+      <td>30.1 KB</td>
+      <td>69.5 KB</td>
+      <td>10.1 KB</td>
+      <td>50.8 KB</td>
+      <td>409 KB</td>
+      <td>227 KB</td>
+      </tr>
+      <tr>
+      <td>Pong</td>
+      <td>30.1 KB</td>
+      <td>70.4 KB</td>
+      <td>10.9 KB</td>
+      <td>52.6 KB</td>
+      <td>414 KB</td>
+      <td>244 KB</td>
+      </tr>
+      </tbody>
+      </table></div>
+      <ul>
+      <li><strong>Measuring:</strong> flash and RAM are measured from the firmware ELF (<code>size -A</code>), built with the Display Pack driver. They include the code, USB, the display driver and the on-device learner.</li>
+      <li><strong>The Pico 2 W:</strong> 4 MB of flash and 520 KB of SRAM (512 KiB of it in the main memory map).</li>
+      <li><strong>Room to shrink:</strong> the float32 embedding tables are the largest part. They could be int8 too.</li>
+      </ul>
+      <p><strong>Reusing the export.</strong> <code>src/tinyworldformer/rustexport/</code> imports only numpy and torch, and a test keeps it that way, so other projects can use it:</p>
+      <ol>
+      <li>Build a model from <code>rustexport.qat</code> (<code>QLinear</code>, <code>LoopedBlock</code>).</li>
+      <li>Train it with <code>ActQuant.enabled = True</code> after a float warm-up.</li>
+      <li><code>rustexport.convert.looped_model</code> turns it into the integer spec.</li>
+      <li><code>int_model_arrays</code> and <code>mlp_arrays</code> with <code>codegen.write_module</code> write the Rust source; <code>rustexport.Golden</code> writes the vectors a Rust test checks.</li>
+      </ol>
+      <h2 id="on-the-chip">On the chip</h2>
+      <p>The firmware (<code>tinyworldformer-rs/firmware</code>) is <code>no_std</code> Rust on embassy. Nothing is allocated at run time: the weights are <code>static</code> arrays in flash, and every buffer is a fixed-size <code>static</code> in RAM.</p>
+      <p><strong>Core 1 runs the game.</strong> One pass of its loop (<code>dream_loop</code> in <code>firmware/src/main.rs</code>) is one frame:</p>
+      <ol>
+      <li><strong>The actor picks a button.</strong> It reads features off the current frame (<code>agent::observe</code>) and runs its MLP. If on-device learning is on, the learning agent picks instead. If you are pressing buttons, your press is used.</li>
+      <li><strong>The dream draws the next frame.</strong> The int8 transformer runs 2 loops over the frame and the button (<code>Engine::forward</code>). Decoding turns its scores into the next frame: background argmax per cell, each singleton placed once (sampled for random events, with an xorshift RNG), then the sprite stamps. The reward is the argmax of the reward head, and lives and episode ends are counters on top.</li>
+      <li><strong>The learner updates</strong> (if learning is on), from this one transition, then forgets it.</li>
+      <li><strong>The frame goes to core 0</strong> through a two-slot channel. If core 0 is still busy with the previous frame, this one is dropped: core 1 never waits for the screen.</li>
+      </ol>
+      <p>When you play, core 1 also slows to a playable speed (66–150 ms per frame, depending on the game). The agent runs as fast as the chip allows.</p>
+      <p><strong>Core 0 talks to the outside world</strong> (embassy async tasks):</p>
+      <ul>
+        <li><strong>USB serial:</strong> each frame goes out as coloured ANSI text with a status line (model time, actor time, fps, env and agent names). Keys come back in.</li>
+        <li><strong>Display Pack</strong> (optional, <code>--features display</code>): a 320×240 ST7789 over SPI at up to 62.5 MHz. Only cells that changed since the last frame are redrawn.</li>
+        <li><strong>Buttons:</strong> polled every 20 ms.</li>
+      </ul>
+      <p>The cores share only the frame channel and a few atomics: who is playing, the pressed key, learning on/off, the loop count.</p>
+      <p><strong>Where the memory goes:</strong></p>
+      <div class="table"><table>
+      <thead>
+      <tr>
+      <th></th>
+      <th>in flash</th>
+      <th>in RAM</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td>world model</td>
+      <td>int8 matrices, float32 embeddings, norms and scales, the game's opening frames and colours (52–138 KB)</td>
+      <td>scratch buffers for one forward pass: activations for 36–80 tokens, the int8 copies the matmuls read, and the per-cell scores of the next frame (114 KB for Flappy Bird up to 368 KB for Pac-Man, whose per-cell scores alone take 184 KB)</td>
+      </tr>
+      <tr>
+      <td>actor</td>
+      <td>float32 MLP weights and feature normalization (51–61 KB)</td>
+      <td>its features and hidden layers (about 1 KB)</td>
+      </tr>
+      <tr>
+      <td>on-device learner</td>
+      <td>code only</td>
+      <td>weights, eligibility traces and normalization for two 32-unit networks (about 85 KB)</td>
+      </tr>
+      <tr>
+      <td>firmware</td>
+      <td>code, USB, display driver (about 150 KB)</td>
+      <td>stacks (16 KB for core 1), USB buffers, frame channels</td>
+      </tr>
+      </tbody>
+      </table></div>
+      <p>The memory map gives 4 MB of flash and 512 KiB of RAM. Every game fits: Breakout uses 361 KB of flash and 299 KB of RAM; Pac-Man, the largest, 600 KB and 460 KB.</p>
+      <p><strong>The inner loop.</strong> Most of the time goes into int8 dot products (<code>dot_i8</code> in <code>src/lib.rs</code>):</p>
+      <ul>
+        <li><strong>Loads:</strong> one 32-bit load fetches 4 weights.</li>
+        <li><strong>Unpacking:</strong> <code>SXTB16</code> unpacks bytes 0/2 and 1/3 into 16-bit halves.</li>
+        <li><strong>Multiply-adds:</strong> <code>SMLAD</code> does two multiply-adds in one instruction.</li>
+        <li><strong>Attention:</strong> its uint8 probabilities times int8 values use <code>UXTB16</code> instead of <code>SXTB16</code>.</li>
+        <li><strong>Float work:</strong> norms, the exp table lookup and the final scale per output stay in float32 on the FPU.</li>
+        <li><strong>Speed:</strong> a frame at 2 loops is 2–4M multiply-adds. On a desktop CPU the same Rust code dreams a frame in 0.7 ms (Flappy Bird) to 1.5 ms (Breakout).</li>
+      </ul>
+      <p><strong>Learning at boot.</strong> The board starts with a fresh agent learning on the device. Press <code>l</code> over USB, or hold B for 1 s on the Display Pack, to switch to the pretrained actor, and again to switch back.</p>
+    </article>
+    <p class="meta">Code, weights and the full reproduction steps: <a href="https://github.com/SheepSeb/tinyworldformer">github.com/SheepSeb/tinyworldformer</a></p>
+  </main>
+  <script src="sim.js"></script>
+  <script src="tinyworldformer.js"></script>
+</body>
+</html>
