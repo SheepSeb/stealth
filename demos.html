@@ -1,36 +1,46 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Research Demos · Verdin Systems</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23d8b23c'/></svg>">
-  <script>try { if (localStorage.getItem('theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch {}</script>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23d8b23c'/></svg>">
+  <script>try { if (localStorage.getItem('theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch { }</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body class="post">
   <canvas id="world" aria-hidden="true"></canvas>
   <nav>
     <a href="index.html">stealth</a>
     <a href="demos.html" aria-current="page">research demos</a>
     <button id="lamp" aria-label="Toggle light" aria-pressed="true">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path
+          d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+        <path d="M9 18h6" />
+        <path d="M10 22h4" />
+      </svg>
     </button>
   </nav>
-    <main class="post">
+  <main class="post">
     <h1>research demos<span class="cursor">_</span></h1>
     <p class="meta">Small models you can run in your browser.</p>
     <ul class="posts">
       <li>
-        <a href="tinyworldformer.html">
+        <a href="posts/tinyworldformer.html">
           <img src="media/dream_doomlite.gif" alt="Doom-lite, dreamed frame by frame" width="160">
           <span>
             <span class="meta">october 2026 · playable</span>
-            <strong>Games with no game code</strong>
-            <span class="summary">Five games dreamed frame by frame by an int8 transformer small enough for a Pico 2 W. Watch the agent play, take over, or let it learn from scratch.</span>
+            <strong>Tinyworldformer: a tiny world model</strong>
+            <span class="summary">Five games generated frame by frame by an looped transformer small enough for a Pico 2
+              W.</span>
           </span>
         </a>
       </li>
@@ -38,4 +48,5 @@
   </main>
   <script src="sim.js"></script>
 </body>
+
 </html>

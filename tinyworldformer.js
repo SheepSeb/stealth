@@ -21,7 +21,7 @@ $('screen').closest('main').addEventListener('pointerdown', e => e.stopPropagati
 
 async function load(env) {
   const gen = ++generation;
-  const url = `wasm/${env}.wasm`;
+  const url = `../wasm/${env}.wasm`;
   const { instance } = await WebAssembly.instantiateStreaming(fetch(url), {})
     .catch(async () => WebAssembly.instantiate(await (await fetch(url)).arrayBuffer(), {})); // host without application/wasm
   if (gen !== generation) return; // a newer pick won
@@ -92,7 +92,7 @@ addEventListener('keydown', ev => {
 $('agent').onclick = () => press('g');
 $('learn').onclick = () => press('l');
 
-fetch('wasm/envs.json').then(r => r.json()).then(list => {
+fetch('../wasm/envs.json').then(r => r.json()).then(list => {
   envs = list.includes('doomlite') ? ['doomlite', ...list.filter(e => e !== 'doomlite')] : list; // doom-lite first: the most striking dream
   for (const env of envs) {
     const b = document.createElement('button');

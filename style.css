@@ -123,3 +123,5 @@ main.post > p:not(.meta):not(.caption) { text-align: left; }
 .video video, .writeup img { margin-left: auto; margin-right: auto; }
 .writeup .gallery { justify-content: center; }
 .posts a { justify-content: center; }
+.repo a { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; text-decoration: none; }
+.repo a:hover { text-decoration: underline; text-underline-offset: 3px; }
